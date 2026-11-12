@@ -189,6 +189,31 @@ family where one member is proxy for a spouse and two children
 (`Pvaluser3`), with EOBs for sensitive procedures and diagnoses hidden from
 proxies and from members under 18.
 
+### What kp does with it
+
+| Step | Request | On failure |
+|---|---|---|
+| Discovery | `GET [base]/metadata`, endpoints from `rest[0].security.extension` `oauth-uris` (`KaiserQuirks::metadata_first`; no `.well-known` request) | exit 5 |
+| Sign-in | authorize with PKCE S256, `aud` = the base, the scopes above; token request with the client id and secret as HTTP Basic | exit 3 |
+| Member | `GET Patient/<patient>` from the token response's `patient` | skip `Patient` |
+| Searches | `ExplanationOfBenefit`, `Coverage`, `Encounter`, `MedicationDispense`, each `?patient=<id>`, every page | skip the search: `forbidden` (403), `unsupported` (404), `upstream`, `page_cap` |
+| `--since D` | `&_lastUpdated=geD` on each search; the member's `Patient` and every referenced read come whole (`since_unbounded`) | as above |
+| References | a read of each `Coverage`, `Location`, `Organization`, `Patient`, `Practitioner` the results name, relative or absolute on the base, not yet written; contained (`#…`) and other servers' references are left alone | skip that resource |
+| Renewal | before a request, a lapsed access token is renewed with the refresh token; a 401 is renewed once and the request retried | stop: exit 3, `kp auth login` |
+
+The export stops, with `complete: false` in the trailer and the error's exit
+code, only when the sign-in is refused, the server is unreachable or the
+output fails. Kaiser's guide does not say how long its access and refresh
+tokens last or whether a refresh rotates the refresh token; pk-med-smart
+stores whatever the token response returns.
+
+`kaiser-health-plan` (production) and `kaiser-health-plan-sandbox` are
+separate organizations in `orgs list`, with separate client credentials
+(`client/production`, `client/sandbox`) and sign-ins
+(`smart/<org>/<patient>`), so a sandbox member never lands in the household's
+records as a real one. `-o <DIR>` writes only the sandbox's or a 127.0.0.1
+server's records to a file.
+
 ### Registration at developer.kp.org
 
 1. Create an account (Azure AD B2C sign-up, email verification), accept the

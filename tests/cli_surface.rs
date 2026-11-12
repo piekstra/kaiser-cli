@@ -5,7 +5,7 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 /// A fresh scratch dir per call. The counter, not the clock, makes it
 /// unique: parallel tests read the same instant often enough on macOS.
@@ -41,6 +41,11 @@ fn json_of(out: &[u8]) -> Value {
     })
 }
 
+fn stdout_json(cmd: &mut Command) -> Value {
+    let out = cmd.assert().success();
+    json_of(&out.get_output().stdout)
+}
+
 #[test]
 fn every_command_renders_help() {
     let home = tmp();
@@ -51,8 +56,14 @@ fn every_command_renders_help() {
         vec!["orgs", "search", "--help"],
         vec!["auth", "--help"],
         vec!["auth", "set-credential", "--help"],
+        vec!["auth", "login", "--help"],
         vec!["auth", "status", "--help"],
         vec!["auth", "logout", "--help"],
+        vec!["patients", "--help"],
+        vec!["patients", "list", "--help"],
+        vec!["records", "--help"],
+        vec!["records", "export", "--help"],
+        vec!["api", "--help"],
         vec!["config", "--help"],
         vec!["config", "path", "--help"],
         vec!["config", "show", "--help"],
@@ -90,49 +101,36 @@ fn version_and_completions() {
 #[test]
 fn info_is_cli_info() {
     let home = tmp();
-    let out = kp(&home).arg("info").assert().success();
-    let v = json_of(&out.get_output().stdout);
+    let v = stdout_json(kp(&home).arg("info"));
     assert_eq!(v["schema"], "cli-info/v1");
     assert_eq!(v["name"], "kp");
     assert_eq!(v["auth"]["method"], "browser-session");
+    assert_eq!(v["profiles"], json!(["health-records/v1"]));
     assert!(v.to_string().contains("piekstra/kaiser-cli"));
 }
 
 #[test]
 fn orgs_list_and_search_emit_org_list() {
     let home = tmp();
-    let out = kp(&home)
-        .args(["orgs", "list", "--json"])
-        .assert()
-        .success();
-    let v = json_of(&out.get_output().stdout);
+    let v = stdout_json(kp(&home).args(["orgs", "list", "--json"]));
     assert_eq!(v["schema"], "org-list/v1");
     let items = v["items"].as_array().unwrap();
-    assert_eq!(items.len(), 1);
+    assert_eq!(items.len(), 2);
     assert_eq!(items[0]["id"], "kaiser-health-plan");
+    assert_eq!(items[1]["id"], "kaiser-health-plan-sandbox");
     assert_eq!(items[0]["vendor"], "kaiser");
     assert_eq!(
         items[0]["fhir_base"],
         "https://kpx-service-bus.kp.org/service/cdo/siae/healthplankpxv1rc/FHIR/api"
     );
 
-    let out = kp(&home)
-        .args(["orgs", "search", "kaiser northwest", "--json"])
-        .assert()
-        .success();
-    assert_eq!(
-        json_of(&out.get_output().stdout)["items"][0]["id"],
-        "kaiser-health-plan"
-    );
-
-    let out = kp(&home)
-        .args(["orgs", "search", "somewhere else", "--json"])
-        .assert()
-        .success();
-    assert_eq!(
-        json_of(&out.get_output().stdout)["items"],
-        Value::Array(vec![])
-    );
+    let v = stdout_json(kp(&home).args(["orgs", "search", "kaiser northwest", "--json"]));
+    assert_eq!(v["items"].as_array().unwrap().len(), 2);
+    let v = stdout_json(kp(&home).args(["orgs", "search", "sandbox", "--json"]));
+    assert_eq!(v["items"].as_array().unwrap().len(), 1);
+    assert_eq!(v["items"][0]["id"], "kaiser-health-plan-sandbox");
+    let v = stdout_json(kp(&home).args(["orgs", "search", "somewhere else", "--json"]));
+    assert_eq!(v["items"], json!([]));
 
     kp(&home)
         .args(["orgs", "list"])
@@ -144,18 +142,14 @@ fn orgs_list_and_search_emit_org_list() {
 #[test]
 fn nothing_stored_reads_as_such_without_the_keychain() {
     let home = tmp();
-    let out = kp(&home)
-        .args(["auth", "status", "--json"])
-        .assert()
-        .success();
-    let v = json_of(&out.get_output().stdout);
+    let v = stdout_json(kp(&home).args(["auth", "status", "--json"]));
     assert_eq!(v["schema"], "auth-status/v1");
     assert_eq!(v["required"], true);
     assert_eq!(v["authenticated"], false);
     assert_eq!(v["method"], "browser-session");
     assert_eq!(v["credential_in_keychain"], false);
-    assert_eq!(v["environment"], "production");
     assert_eq!(v["clients"].as_array().unwrap().len(), 2);
+    assert_eq!(v["patients"], json!([]));
     kp(&home)
         .args(["auth", "status"])
         .assert()
@@ -165,6 +159,16 @@ fn nothing_stored_reads_as_such_without_the_keychain() {
         .args(["auth", "logout", "--json"])
         .assert()
         .success();
+    let v = stdout_json(kp(&home).args(["patients", "list", "--json"]));
+    assert_eq!(v["schema"], "patient-list/v1");
+    assert_eq!(v["items"], json!([]));
+    // With nothing signed in, a read is an auth error before any request.
+    for args in [
+        vec!["records", "export", "--ndjson"],
+        vec!["api", "GET", "ExplanationOfBenefit"],
+    ] {
+        kp(&home).args(&args).assert().code(3);
+    }
 }
 
 #[test]
@@ -177,8 +181,20 @@ fn bad_arguments_are_refused_before_anything_else() {
             vec!["auth", "set-credential", "--stdin", "--from-env", "X"],
             2,
         ),
+        (vec!["auth", "login", "--org", "somewhere"], 4),
+        (vec!["auth", "login", "--label", "has space"], 2),
+        (vec!["auth", "login", "--timeout", "0"], 2),
+        (vec!["records", "export"], 2),
+        (vec!["records", "export", "--ndjson", "--json"], 2),
+        (vec!["records", "export", "--ndjson", "-o", "x"], 2),
+        (
+            vec!["records", "export", "--ndjson", "--since", "2024-13-01"],
+            2,
+        ),
+        (vec!["api", "POST", "Patient"], 2),
+        (vec!["patients", "list", "--org", "x"], 2),
         (vec!["config", "set", "nope", "x"], 2),
-        (vec!["config", "set", "environment", "staging"], 2),
+        (vec!["config", "set", "environment", "sandbox"], 2),
         (vec!["config", "set", "redirect_port", "80"], 2),
         (
             vec!["config", "set", "fhir_base", "http://example.com/fhir"],
@@ -222,41 +238,20 @@ fn errors_are_one_json_document() {
 fn config_round_trips() {
     let home = tmp();
     kp(&home)
-        .args(["config", "set", "environment", "sandbox"])
-        .assert()
-        .success();
-    kp(&home)
         .args(["config", "set", "redirect_port", "8123"])
         .assert()
         .success();
-    let out = kp(&home)
-        .args(["config", "show", "--json"])
-        .assert()
-        .success();
-    let v = json_of(&out.get_output().stdout);
-    assert_eq!(v["environment"], "sandbox");
+    let v = stdout_json(kp(&home).args(["config", "show", "--json"]));
     assert_eq!(v["redirect_uri"], "http://127.0.0.1:8123/callback");
-    let out = kp(&home)
-        .args(["config", "path", "--json"])
-        .assert()
-        .success();
-    let path = json_of(&out.get_output().stdout)["path"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let v = stdout_json(kp(&home).args(["config", "path", "--json"]));
+    let path = v["path"].as_str().unwrap().to_string();
     assert!(path.ends_with("kp/config.json"), "{path}");
     kp(&home)
-        .args(["config", "unset", "environment"])
+        .args(["config", "unset", "redirect_port"])
         .assert()
         .success();
-    let out = kp(&home)
-        .args(["auth", "status", "--json"])
-        .assert()
-        .success();
-    assert_eq!(
-        json_of(&out.get_output().stdout)["environment"],
-        "production"
-    );
+    let v = stdout_json(kp(&home).args(["config", "show", "--json"]));
+    assert_eq!(v["redirect_uri"], "http://127.0.0.1:7469/callback");
 }
 
 #[test]

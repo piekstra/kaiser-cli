@@ -1,7 +1,7 @@
 BIN := kp
 CARGO ?= cargo
 
-.PHONY: build release test lint fmt fmt-check clean install deps smoke verify dev
+.PHONY: build release test lint fmt fmt-check clean install deps smoke verify dev mock
 
 # Every target that produces a binary signs it. `cargo build` and
 # `cargo install` ad-hoc sign, minting a new code identity each time, and
@@ -46,6 +46,11 @@ dev:
 	$(CARGO) build
 	@$(SIGN)
 
+# A local stand-in for Kaiser's API (SMART + FHIR) serving one synthetic
+# member, for dogfooding. CONTRIBUTING.md shows how to point kp at it.
+mock:
+	$(CARGO) run --example mock_kaiser
+
 # Offline smoke test on the release binary. It never reads the real keychain:
 # KP_KEYCHAIN_SERVICE names a service that holds nothing, and the config
 # and state live under target/smoke.
@@ -59,8 +64,10 @@ smoke: release
 	@$(SMOKE) completions bash >/dev/null
 	@$(SMOKE) auth status --json >/dev/null
 	@$(SMOKE) orgs list --json >/dev/null
-	@for c in "orgs list" "orgs search" "auth set-credential" "auth status" \
-		"auth logout" "config set" "config show"; do \
+	@$(SMOKE) patients list --json >/dev/null
+	@for c in "orgs list" "orgs search" "auth set-credential" "auth login" \
+		"auth status" "auth logout" "patients list" "records export" "api" \
+		"config set" "config show"; do \
 		$(SMOKE) $$c --help >/dev/null || exit 1; done
 	@echo "smoke ok"
 

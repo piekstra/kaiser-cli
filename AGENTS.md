@@ -16,12 +16,15 @@ kp's (`docs/api.md`, Route).
 |---|---|
 | `src/main.rs` | parsing, dispatch, `info`, exit codes |
 | `src/cli.rs` | the clap tree |
-| `src/commands/*.rs` | one module per command group; `Ctx` (config, vault) in `mod.rs` |
-| `src/kaiser.rs` | the one organization: its FHIR base, regions, scopes per environment, `--org` resolution and search |
-| `src/config.rs` | non-secret settings: environment, redirect port, FHIR base override |
+| `src/commands/*.rs` | one module per command group; `Ctx` (config, vault, refresh lock, browser) in `mod.rs` |
+| `src/kaiser.rs` | the two organizations (the health plan and its sandbox): FHIR base, regions, scopes, `--org` resolution and search, `KaiserQuirks` |
+| `src/session.rs` | a signed-in member (`Context`), pk-med-smart's sessions in the Keychain (`Sessions`), the live token with renewal (`Live`) |
+| `src/export.rs` | what `records export` pulls, in order, and which failures skip rather than stop |
+| `src/config.rs` | non-secret settings: redirect port, FHIR base override |
 | `src/credentials.rs` | the Keychain behind a trait (`Vault`, `MemoryVault` in tests), the app's client id and secret |
-| `src/state.rs` | `state.json`: which Keychain items exist, so a logged-out command opens none |
+| `src/state.rs` | `state.json`: which Keychain items exist and who is signed in, so a logged-out command opens none |
 | `src/fsutil.rs` | owner-only files written whole |
+| `examples/mock_kaiser.rs` | `make mock`: medical-common's mock SMART + FHIR server, for dogfooding |
 | `docs/api.md` | Kaiser's API, quoted, with sources and traps; read before changing auth or export |
 
 ## Medical data
@@ -47,6 +50,10 @@ Medical records are the most sensitive data a household has.
   `kp auth set-credential` from a prompt that does not echo, `--stdin` or
   `--from-env`. Kaiser's terms keep both confidential: never printed,
   logged, or put in argv.
+- A member's sign-in is pk-med-smart's session, one Keychain item per
+  member: account `smart/<org>/<FHIR patient id>`. Errors never name the
+  account, since it holds the member's id. Renewal runs under the family's
+  refresh lock, so two `kp` runs never spend one refresh token twice.
 - Tests and `make verify` never read the real Keychain:
   `KP_KEYCHAIN_SERVICE` names an empty service for the surface tests and
   `smoke`; the in-process tests use `MemoryVault`.
@@ -58,7 +65,10 @@ Medical records are the most sensitive data a household has.
 - `--json` on every command, one schema-tagged document on stdout.
 - Arguments, and secrets from `--stdin` or `--from-env`, are checked before
   the Keychain or the network.
-- Read-only: kp never writes to Kaiser.
+- Read-only: kp never writes to Kaiser; `api` takes GET only.
+- `records export -o` writes only a sandbox or 127.0.0.1 server's records
+  to a file, and refuses before the Keychain otherwise: a real member's
+  records go to stdout, straight into `medrec import`.
 - Every binary-producing `make` target signs with the stable
   `pk-cli-codesign` identity.
 
@@ -68,6 +78,14 @@ Medical records are the most sensitive data a household has.
 
 - `tests/cli_surface.rs`: the binary's help, exit codes, JSON errors,
   `info`, completions, `orgs`, `config`, logged-out `auth status`.
+- `tests/e2e.rs`: in process against medical-common's mock server on
+  127.0.0.1, with a stand-in browser and `MemoryVault`: sign-in (discovery
+  from the CapabilityStatement, HTTP Basic at the token endpoint, the
+  scopes), export counts, `--since`, a refused token renewed once, refused
+  and failing searches as skips, a refused renewal (exit 3 with kp's
+  remedy, `refused_at` recorded, the last complete export kept), a
+  declined consent, `-o` refused for a production member, two members and
+  logout, `set-credential`.
 - `tests/no_personal_data.rs`: personal-data shapes in tracked files.
 - Unit tests in each module.
 

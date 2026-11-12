@@ -21,7 +21,6 @@ pub fn run(ctx: &Ctx, cmd: &ConfigCmd) -> Result<(), CliError> {
         ConfigCmd::Show => {
             let cfg: Config = ctx.config()?;
             let effective = serde_json::json!({
-                "environment": cfg.environment().as_str(),
                 "redirect_uri": cfg.redirect_uri(),
                 "fhir_base": cfg.fhir_base(),
             });

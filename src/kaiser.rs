@@ -1,17 +1,26 @@
-//! Kaiser Permanente's health-plan Patient Access API: the one organization
-//! `kp` reaches, its endpoints and the scopes it requires. `docs/api.md` has
-//! the sources.
+//! Kaiser Permanente's health-plan Patient Access API: the organizations
+//! `kp` reaches (production, and the sandbox with Kaiser's synthetic test
+//! members), their FHIR base, and the scopes Kaiser requires. `docs/api.md`
+//! has the sources.
 
+use pk_cli_core::CliError;
 use pk_med_records::Organization;
+use pk_med_smart::{ScopeSet, VendorQuirks};
 
-/// `kp`'s id for the health plan, the `--org` value and the keychain prefix.
+/// `kp`'s id for the health plan: the `--org` value, the stream header's
+/// `organization.id` and the Keychain prefix of its sign-ins.
 pub const ORG_ID: &str = "kaiser-health-plan";
+
+/// The sandbox's own id, so a store never files a synthetic member's
+/// records beside a real member's.
+pub const SANDBOX_ORG_ID: &str = "kaiser-health-plan-sandbox";
 
 pub const ORG_NAME: &str = "Kaiser Permanente health plan";
 
 /// The FHIR base of the Patient Access API (Smile CDR behind Apigee), one for
-/// every region. Kaiser's guide also writes `[base]/HPEOB/...` in its search
-/// table; its own example request has no `HPEOB`.
+/// every region, for the sandbox too. Kaiser's guide also writes
+/// `[base]/HPEOB/...` in its search table; its own example request has no
+/// `HPEOB`.
 pub const FHIR_BASE: &str =
     "https://kpx-service-bus.kp.org/service/cdo/siae/healthplankpxv1rc/FHIR/api";
 
@@ -35,8 +44,7 @@ pub const PRODUCTION_SCOPE: &str =
 /// Added to the production scopes for Kaiser's sandbox.
 pub const SANDBOX_SCOPE: &str = "sandbox";
 
-/// Which of the two client registrations a command uses. Both reach the same
-/// hosts; the sandbox is selected by its own client and the `sandbox` scope.
+/// Which of the app's two client registrations a sign-in uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
@@ -45,6 +53,8 @@ pub enum Environment {
 }
 
 impl Environment {
+    pub const ALL: [Environment; 2] = [Environment::Production, Environment::Sandbox];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Environment::Production => "production",
@@ -52,44 +62,59 @@ impl Environment {
         }
     }
 
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim() {
-            "production" => Some(Environment::Production),
-            "sandbox" => Some(Environment::Sandbox),
-            _ => None,
-        }
-    }
-
-    /// The scope string a sign-in asks for.
+    /// The scopes a sign-in asks for.
     pub fn scope(self) -> String {
         match self {
             Environment::Production => PRODUCTION_SCOPE.to_string(),
             Environment::Sandbox => format!("{PRODUCTION_SCOPE} {SANDBOX_SCOPE}"),
         }
     }
-}
 
-/// The health plan as an `org-list/v1` item and a stream header's
-/// `organization`.
-pub fn organization() -> Organization {
-    Organization {
-        id: ORG_ID.to_string(),
-        name: ORG_NAME.to_string(),
-        fhir_base: pk_med_fhir::normalize_base(FHIR_BASE),
-        vendor: Some("kaiser".to_string()),
-        location: Some("all regions".to_string()),
-        aliases: vec![
-            "Kaiser Foundation Health Plan".to_string(),
-            "Kaiser Permanente".to_string(),
-            "KP".to_string(),
-        ],
+    pub fn scopes(self) -> ScopeSet {
+        ScopeSet::parse(&self.scope())
+    }
+
+    pub fn org_id(self) -> &'static str {
+        match self {
+            Environment::Production => ORG_ID,
+            Environment::Sandbox => SANDBOX_ORG_ID,
+        }
+    }
+
+    /// The environment of an organization id kp issued.
+    pub fn of_org(org_id: &str) -> Option<Self> {
+        Environment::ALL.into_iter().find(|e| e.org_id() == org_id)
     }
 }
 
-/// Whether the organization matches every word of `text`, against its name,
-/// aliases and regions, ignoring case.
-pub fn matches(text: &str) -> bool {
-    let org = organization();
+/// An organization as `org-list/v1` and a stream header carry it, at
+/// `fhir_base` (Kaiser's, or a test server's from the config).
+pub fn organization(environment: Environment, fhir_base: &str) -> Organization {
+    let (name, location) = match environment {
+        Environment::Production => (ORG_NAME.to_string(), "all regions"),
+        Environment::Sandbox => (format!("{ORG_NAME} (sandbox)"), "synthetic test members"),
+    };
+    let mut aliases = vec![
+        "Kaiser Foundation Health Plan".to_string(),
+        "Kaiser Permanente".to_string(),
+        "KP".to_string(),
+    ];
+    if environment == Environment::Sandbox {
+        aliases.push("sandbox".to_string());
+    }
+    Organization {
+        id: environment.org_id().to_string(),
+        name,
+        fhir_base: pk_med_fhir::normalize_base(fhir_base),
+        vendor: Some("kaiser".to_string()),
+        location: Some(location.to_string()),
+        aliases,
+    }
+}
+
+/// Whether `org` matches every word of `text`, against its id, name, other
+/// names and Kaiser's regions, ignoring case.
+pub fn matches(org: &Organization, text: &str) -> bool {
     let mut haystack = vec![org.name.clone(), org.id.clone()];
     haystack.extend(org.aliases.iter().cloned());
     haystack.extend(REGIONS.iter().map(|r| r.to_string()));
@@ -98,15 +123,38 @@ pub fn matches(text: &str) -> bool {
     !words.is_empty() && words.iter().all(|w| haystack.contains(w.as_str()))
 }
 
-/// Resolve `--org`: the id, or any text `orgs search` matches.
-pub fn resolve_org(value: &str) -> Result<Organization, pk_cli_core::CliError> {
-    if value.trim().eq_ignore_ascii_case(ORG_ID) || matches(value) {
-        Ok(organization())
-    } else {
-        Err(pk_cli_core::CliError::NotFound(format!(
-            "no organization matches `{}`; kp reaches one: `{ORG_ID}` ({ORG_NAME})",
+/// Resolve `--org`: an id, `sandbox`, or text that matches one of the two
+/// (text both match, such as `kaiser`, is production).
+pub fn resolve_org(value: &str) -> Result<Environment, CliError> {
+    let v = value.trim().to_lowercase();
+    match v.as_str() {
+        ORG_ID | "production" => return Ok(Environment::Production),
+        SANDBOX_ORG_ID | "sandbox" => return Ok(Environment::Sandbox),
+        _ => {}
+    }
+    let hits: Vec<Environment> = Environment::ALL
+        .into_iter()
+        .filter(|e| matches(&organization(*e, FHIR_BASE), value))
+        .collect();
+    match hits.as_slice() {
+        [one] => Ok(*one),
+        [_, _] => Ok(Environment::Production),
+        _ => Err(CliError::NotFound(format!(
+            "no organization matches `{}`; kp reaches `{ORG_ID}` and `{SANDBOX_ORG_ID}`",
             value.trim()
-        )))
+        ))),
+    }
+}
+
+/// What Kaiser's server does differently from SMART as written: it
+/// publishes no `.well-known/smart-configuration` (Apigee answers 400), so
+/// discovery asks the CapabilityStatement first.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct KaiserQuirks;
+
+impl VendorQuirks for KaiserQuirks {
+    fn metadata_first(&self) -> bool {
+        true
     }
 }
 
@@ -121,26 +169,37 @@ mod tests {
             "patient/*.read launch/patient offline_access ExplanationOfBenefit"
         );
         assert!(Environment::Sandbox.scope().ends_with(" sandbox"));
-        assert_eq!(Environment::parse("sandbox"), Some(Environment::Sandbox));
-        assert_eq!(Environment::parse("prod"), None);
+        assert!(Environment::Sandbox.scopes().contains("sandbox"));
+        assert!(Environment::Production
+            .scopes()
+            .contains("ExplanationOfBenefit"));
     }
 
     #[test]
-    fn organization_is_normalized() {
-        let org = organization();
-        assert_eq!(org.fhir_base, FHIR_BASE);
-        assert!(!org.fhir_base.ends_with('/'));
+    fn organizations_are_normalized_and_distinct() {
+        let p = organization(Environment::Production, &format!("{FHIR_BASE}/"));
+        let s = organization(Environment::Sandbox, FHIR_BASE);
+        assert_eq!(p.fhir_base, FHIR_BASE);
+        assert_ne!(p.id, s.id);
+        assert_eq!(Environment::of_org(&s.id), Some(Environment::Sandbox));
+        assert_eq!(Environment::of_org("other"), None);
     }
 
     #[test]
     fn search_and_resolve() {
-        assert!(matches("kaiser"));
-        assert!(matches("KAISER northwest"));
-        assert!(matches("health plan"));
-        assert!(!matches("mychart"));
-        assert!(!matches("   "));
-        assert_eq!(resolve_org("kaiser-health-plan").unwrap().id, ORG_ID);
-        assert_eq!(resolve_org("Kaiser").unwrap().id, ORG_ID);
+        let p = organization(Environment::Production, FHIR_BASE);
+        assert!(matches(&p, "kaiser"));
+        assert!(matches(&p, "KAISER northwest"));
+        assert!(!matches(&p, "mychart"));
+        assert!(!matches(&p, "   "));
+        assert_eq!(
+            resolve_org("kaiser-health-plan").unwrap(),
+            Environment::Production
+        );
+        assert_eq!(resolve_org("Kaiser").unwrap(), Environment::Production);
+        assert_eq!(resolve_org("health plan").unwrap(), Environment::Production);
+        assert_eq!(resolve_org("sandbox").unwrap(), Environment::Sandbox);
+        assert_eq!(resolve_org("kaiser sandbox").unwrap(), Environment::Sandbox);
         assert_eq!(resolve_org("nyu").unwrap_err().exit_code(), 4);
     }
 }

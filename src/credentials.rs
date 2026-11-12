@@ -6,8 +6,8 @@
 //! developer terms hold both confidential, so neither is ever printed, put in
 //! a file or taken from argv.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use pk_cli_core::CliError;
 use pk_cli_secrets::{CredentialStore, Secret};
@@ -15,7 +15,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::kaiser::Environment;
 
-pub trait Vault {
+/// `Send + Sync`, so a FHIR client's token source can renew a sign-in
+/// through it.
+pub trait Vault: Send + Sync {
     fn read(&self, account: &str) -> Result<Option<Secret>, CliError>;
     fn write(&self, account: &str, value: &Secret) -> Result<(), CliError>;
     /// `true` when something was removed.
@@ -139,12 +141,18 @@ pub fn read_client(
 /// An in-memory vault for tests.
 #[derive(Default)]
 pub struct MemoryVault {
-    items: RefCell<HashMap<String, String>>,
+    items: Mutex<HashMap<String, String>>,
 }
 
 impl MemoryVault {
+    fn items(&self) -> std::sync::MutexGuard<'_, HashMap<String, String>> {
+        self.items
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     pub fn accounts(&self) -> Vec<String> {
-        let mut accounts: Vec<String> = self.items.borrow().keys().cloned().collect();
+        let mut accounts: Vec<String> = self.items().keys().cloned().collect();
         accounts.sort();
         accounts
     }
@@ -152,20 +160,15 @@ impl MemoryVault {
 
 impl Vault for MemoryVault {
     fn read(&self, account: &str) -> Result<Option<Secret>, CliError> {
-        Ok(self
-            .items
-            .borrow()
-            .get(account)
-            .map(|s| Secret::new(s.clone())))
+        Ok(self.items().get(account).map(|s| Secret::new(s.clone())))
     }
     fn write(&self, account: &str, value: &Secret) -> Result<(), CliError> {
-        self.items
-            .borrow_mut()
+        self.items()
             .insert(account.to_string(), value.expose().to_string());
         Ok(())
     }
     fn delete(&self, account: &str) -> Result<bool, CliError> {
-        Ok(self.items.borrow_mut().remove(account).is_some())
+        Ok(self.items().remove(account).is_some())
     }
     fn service(&self) -> &str {
         "memory"

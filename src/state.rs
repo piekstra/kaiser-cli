@@ -1,7 +1,8 @@
 //! The non-secret record of what this install keeps in the Keychain, as
-//! `state.json` beside the config: which client registrations are stored.
-//! `auth status` reads it first, so a command run with nothing stored opens
-//! no Keychain item and raises no prompt.
+//! `state.json` beside the config: which client registrations are stored,
+//! and a row for each member signed in. `auth status` and `patients list`
+//! read it first, so a command run with nothing stored opens no Keychain
+//! item and raises no prompt.
 
 use std::path::{Path, PathBuf};
 
@@ -9,12 +10,16 @@ use pk_cli_core::CliError;
 use serde::{Deserialize, Serialize};
 
 use crate::kaiser::Environment;
+use crate::session::Context;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct State {
     /// The environments whose client id and secret are in the Keychain.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clients: Vec<Environment>,
+    /// The members signed in, one row per (organization, member).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contexts: Vec<Context>,
 }
 
 impl State {
@@ -30,6 +35,17 @@ impl State {
 
     pub fn remove_client(&mut self, environment: Environment) {
         self.clients.retain(|e| *e != environment);
+    }
+
+    /// Insert or replace the row for the same (organization, member).
+    pub fn upsert_context(&mut self, context: Context) {
+        self.remove_context(&context.organization, &context.id);
+        self.contexts.push(context);
+    }
+
+    pub fn remove_context(&mut self, organization: &str, id: &str) {
+        self.contexts
+            .retain(|c| !(c.organization == organization && c.id == id));
     }
 }
 
