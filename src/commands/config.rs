@@ -21,7 +21,6 @@ pub fn run(ctx: &Ctx, cmd: &ConfigCmd) -> Result<(), CliError> {
         ConfigCmd::Show => {
             let cfg: Config = ctx.config()?;
             let effective = serde_json::json!({
-                "environment": cfg.environment().as_str(),
                 "redirect_uri": cfg.redirect_uri(),
                 "fhir_base": cfg.fhir_base(),
             });
@@ -36,7 +35,8 @@ pub fn run(ctx: &Ctx, cmd: &ConfigCmd) -> Result<(), CliError> {
             Ok(())
         }
         ConfigCmd::Unset { key } => {
-            let mut cfg: Config = ctx.config()?;
+            // Not `ctx.config()`, which refuses a retired key this removes.
+            let mut cfg: Config = ctx.store.load()?;
             cfg.unset(key)?;
             ctx.store.save(&cfg)?;
             ctx.note(format!("{key} unset"));

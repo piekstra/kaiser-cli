@@ -1165,14 +1165,17 @@ dependencies = [
  "pk-cli-config",
  "pk-cli-core",
  "pk-cli-drive",
+ "pk-cli-http",
  "pk-cli-secrets",
  "pk-cli-selfupdate",
  "pk-med-fhir",
  "pk-med-records",
+ "pk-med-smart",
  "predicates",
  "serde",
  "serde_json",
  "tempfile",
+ "url",
 ]
 
 [[package]]
@@ -1422,8 +1425,8 @@ dependencies = [
 
 [[package]]
 name = "pk-cli-auth"
-version = "0.31.0"
-source = "git+https://github.com/piekstra/cli-common?tag=v0.31.0#bf3a3e534428b931f13c4f426eec270bd9a38fd8"
+version = "0.31.1"
+source = "git+https://github.com/piekstra/cli-common?tag=v0.31.1#a8ad14976febd0782d9830388d95b86e8713028a"
 dependencies = [
  "clap",
  "getrandom 0.4.3",
@@ -1437,8 +1440,8 @@ dependencies = [
 
 [[package]]
 name = "pk-cli-config"
-version = "0.31.0"
-source = "git+https://github.com/piekstra/cli-common?tag=v0.31.0#bf3a3e534428b931f13c4f426eec270bd9a38fd8"
+version = "0.31.1"
+source = "git+https://github.com/piekstra/cli-common?tag=v0.31.1#a8ad14976febd0782d9830388d95b86e8713028a"
 dependencies = [
  "pk-cli-core",
  "serde",
@@ -1447,8 +1450,8 @@ dependencies = [
 
 [[package]]
 name = "pk-cli-core"
-version = "0.31.0"
-source = "git+https://github.com/piekstra/cli-common?tag=v0.31.0#bf3a3e534428b931f13c4f426eec270bd9a38fd8"
+version = "0.31.1"
+source = "git+https://github.com/piekstra/cli-common?tag=v0.31.1#a8ad14976febd0782d9830388d95b86e8713028a"
 dependencies = [
  "clap",
  "libc",
@@ -1459,8 +1462,8 @@ dependencies = [
 
 [[package]]
 name = "pk-cli-drive"
-version = "0.31.0"
-source = "git+https://github.com/piekstra/cli-common?tag=v0.31.0#bf3a3e534428b931f13c4f426eec270bd9a38fd8"
+version = "0.31.1"
+source = "git+https://github.com/piekstra/cli-common?tag=v0.31.1#a8ad14976febd0782d9830388d95b86e8713028a"
 dependencies = [
  "pk-cli-core",
  "serde",
@@ -1468,9 +1471,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pk-cli-http"
+version = "0.31.1"
+source = "git+https://github.com/piekstra/cli-common?tag=v0.31.1#a8ad14976febd0782d9830388d95b86e8713028a"
+dependencies = [
+ "clap",
+ "pk-cli-core",
+ "reqwest",
+ "serde_json",
+]
+
+[[package]]
 name = "pk-cli-secrets"
-version = "0.31.0"
-source = "git+https://github.com/piekstra/cli-common?tag=v0.31.0#bf3a3e534428b931f13c4f426eec270bd9a38fd8"
+version = "0.31.1"
+source = "git+https://github.com/piekstra/cli-common?tag=v0.31.1#a8ad14976febd0782d9830388d95b86e8713028a"
 dependencies = [
  "clap",
  "keyring",
@@ -1483,8 +1497,8 @@ dependencies = [
 
 [[package]]
 name = "pk-cli-selfupdate"
-version = "0.31.0"
-source = "git+https://github.com/piekstra/cli-common?tag=v0.31.0#bf3a3e534428b931f13c4f426eec270bd9a38fd8"
+version = "0.31.1"
+source = "git+https://github.com/piekstra/cli-common?tag=v0.31.1#a8ad14976febd0782d9830388d95b86e8713028a"
 dependencies = [
  "clap",
  "flate2",
@@ -1497,25 +1511,40 @@ dependencies = [
 
 [[package]]
 name = "pk-med-fhir"
-version = "0.1.0"
-source = "git+https://github.com/piekstra/medical-common?tag=v0.1.0#7e1a66bdf26e869b46001a752393266c88c63fe9"
+version = "0.2.0"
+source = "git+https://github.com/piekstra/medical-common?tag=v0.2.0#10713394efd0aa1823df81c136bf6368770c9f7c"
 dependencies = [
  "base64 0.22.1",
  "pk-cli-core",
  "pk-cli-secrets",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
 ]
 
 [[package]]
 name = "pk-med-records"
-version = "0.1.0"
-source = "git+https://github.com/piekstra/medical-common?tag=v0.1.0#7e1a66bdf26e869b46001a752393266c88c63fe9"
+version = "0.2.0"
+source = "git+https://github.com/piekstra/medical-common?tag=v0.2.0#10713394efd0aa1823df81c136bf6368770c9f7c"
 dependencies = [
  "pk-cli-core",
  "pk-med-fhir",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "pk-med-smart"
+version = "0.2.0"
+source = "git+https://github.com/piekstra/medical-common?tag=v0.2.0#10713394efd0aa1823df81c136bf6368770c9f7c"
+dependencies = [
+ "base64 0.22.1",
+ "pk-cli-auth",
+ "pk-cli-core",
+ "pk-cli-secrets",
+ "serde",
+ "serde_json",
+ "zeroize",
 ]
 
 [[package]]

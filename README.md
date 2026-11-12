@@ -14,10 +14,9 @@ use [`mychart`](https://github.com/piekstra/mychart-cli) for those.
 
 ## Status
 
-Not released yet. This version answers `orgs`, `auth` and `config` and
-stores your app's Kaiser client registration; the browser sign-in and
-`records export` (medical-common's `health-records/v1` profile, read by
-`medrec import --from kp`) follow before v0.1.0.
+Not released yet. The sign-in and `records export` are tested against
+medical-common's mock server; the first run against Kaiser's sandbox waits
+on the app's approval at developer.kp.org.
 
 ## Setup
 
@@ -37,18 +36,50 @@ kp auth set-credential --sandbox    # the sandbox, with Kaiser's synthetic test 
 op read "op://<vault>/<item>/pair" | kp auth set-credential --stdin   # `<id>:<secret>`
 ```
 
+4. Sign in once per member, in the browser, on kp.org's own pages:
+
+```sh
+kp auth login --label adult1        # opens kp.org; consent; back to this machine
+kp auth login --org sandbox         # one of Kaiser's synthetic test members
+```
+
+A member who acts for family members on kp.org signs in once for each,
+picking them on Kaiser's page, with a label for each (`--label child1`).
+
+## Use
+
+```sh
+kp patients list                                  # who is signed in
+kp records export --ndjson --patient adult1 | medrec import --from kp
+medrec import --from kp                           # the same, run by medrec
+kp records export --ndjson --since 2026-01-01     # only what changed since
+kp api GET 'ExplanationOfBenefit?patient=<id>'    # one read, the raw answer
+```
+
+`records export` pulls every claim (`ExplanationOfBenefit`), coverage,
+encounter and pharmacy dispense Kaiser serves for the member, then the
+patient, providers, organizations and locations they name. It writes
+medical-common's `records-stream/v1`. A search Kaiser refuses or fails is
+listed in the stream's trailer as skipped; the export stops only when the
+sign-in, the network or the output fails.
+
 ## Commands
 
 | Command | Does |
 |---|---|
-| `kp orgs list`, `kp orgs search <TEXT>` | the one organization kp reaches (`org-list/v1`) |
+| `kp orgs list`, `kp orgs search <TEXT>` | the health plan and its sandbox (`org-list/v1`) |
 | `kp auth set-credential [--sandbox] [--overwrite]` | store the app's client id and secret |
-| `kp auth status` | what is stored (`auth-status/v1`) |
-| `kp auth logout [--forget]` | remove sign-ins; `--forget` also the client credentials and settings |
-| `kp config path\|show\|set\|unset` | `environment` (`production` or `sandbox`), `redirect_port`, `fhir_base` |
+| `kp auth login [--org sandbox] [--label <WHO>] [--no-browser] [--timeout <MIN>]` | sign a member in; waits up to `--timeout` minutes (default 10, at most 60) |
+| `kp auth status` | what is stored (`auth-status/v1`), per environment and member |
+| `kp auth logout [--patient <WHO>] [--org <ORG>] [--forget]` | remove sign-ins; `--forget` also the client credentials and settings |
+| `kp patients list [--status] [--org <ORG>]` | the signed-in members (`patient-list/v1`); `--status` reads each sign-in |
+| `kp records export --ndjson\|-o <DIR> [--since <DATE>]` | the member's records as `records-stream/v1`; `-o` for the sandbox only |
+| `kp api GET <PATH>` | one FHIR read as the member |
+| `kp config path\|show\|set\|unset` | `redirect_port` (default 7469), `fhir_base` (Kaiser's, or a test server on this machine for the sandbox) |
 | `kp self-update`, `kp completions <SHELL>`, `kp info` | the family's standard commands |
 
-Every command takes `--json`. Exit codes: 0 ok, 2 usage, 3 auth, 4 not
+Every command takes `--json`, except `records export --ndjson`, whose
+output is already the NDJSON stream. Exit codes: 0 ok, 2 usage, 3 auth, 4 not
 found, 5 upstream, 6 confirmation required.
 
 ## Build

@@ -6,6 +6,8 @@ pub mod cli;
 pub mod commands;
 pub mod config;
 pub mod credentials;
+pub mod export;
 pub mod fsutil;
 pub mod kaiser;
+pub mod session;
 pub mod state;

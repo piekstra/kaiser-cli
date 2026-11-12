@@ -6,6 +6,10 @@ use pk_cli_selfupdate::Updater;
 use kp::cli::{Cli, Command};
 use kp::commands::{self, Ctx, BIN, REPO};
 
+/// The profiles `info` declares. No `documents/v1`: Kaiser's API serves no
+/// documents.
+const PROFILES: &[&str] = &["health-records/v1"];
+
 fn main() {
     let cli = Cli::parse();
     if let Err(e) = run(&cli) {
@@ -14,10 +18,13 @@ fn main() {
 }
 
 fn run(cli: &Cli) -> Result<(), CliError> {
-    let ctx = Ctx::for_binary(cli.common.clone(), cli.config.clone());
+    let ctx = Ctx::for_binary(cli.common.clone(), cli.config.clone())?;
     match &cli.command {
         Command::Orgs(cmd) => commands::orgs::run(&ctx, cmd),
         Command::Auth(cmd) => commands::auth::run(&ctx, cmd),
+        Command::Patients(cmd) => commands::patients::run(&ctx, cmd),
+        Command::Records(cmd) => commands::records::run(&ctx, cmd),
+        Command::Api(args) => commands::api::run(&ctx, args),
         Command::Config(cmd) => commands::config::run(&ctx, cmd),
         Command::SelfUpdate(args) => Updater {
             repo: REPO.into(),
@@ -38,10 +45,13 @@ fn run(cli: &Cli) -> Result<(), CliError> {
                 AuthInfo {
                     required: true,
                     method: "browser-session".into(),
-                    login_hint: Some(format!("{BIN} auth set-credential")),
+                    login_hint: Some(format!(
+                        "{BIN} auth set-credential, then {BIN} auth login --label <WHO>"
+                    )),
                 },
-                &["orgs", "auth", "config"],
-            );
+                &["orgs", "auth", "patients", "records", "api", "config"],
+            )
+            .with_profiles(PROFILES);
             output::json(&serde_json::to_value(&info).expect("CliInfo serializes to JSON"));
             Ok(())
         }
