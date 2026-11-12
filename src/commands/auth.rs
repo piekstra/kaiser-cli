@@ -100,17 +100,13 @@ fn read_piped(args: &SetCredentialArgs) -> Result<ClientCredentials, CliError> {
 
 /// A label names a person in this household (`adult1`), never read from a
 /// record: short, printable, no spaces.
-/// Up to 40 letters, digits, `-`, `_` or `.`.
-pub fn is_label(label: &str) -> bool {
-    !label.is_empty()
+fn check_label(label: &str) -> Result<(), CliError> {
+    let ok = !label.is_empty()
         && label.len() <= 40
         && label
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-}
-
-fn check_label(label: &str) -> Result<(), CliError> {
-    if is_label(label) {
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+    if ok {
         Ok(())
     } else {
         Err(CliError::Usage(
