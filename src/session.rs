@@ -117,11 +117,14 @@ pub fn pick<'a>(
         .cloned()
         .collect();
     if narrowed.is_empty() {
+        // The remedy signs in where the caller asked. `--patient` is not
+        // echoed: it may be a member's FHIR id rather than a label.
+        let at = org.unwrap_or(Environment::Production).org_id();
         return Err(CliError::Auth(match org {
-            Some(e) if !contexts.is_empty() => format!("no member is signed in at {}", e.org_id()),
-            _ => "no member is signed in".to_string(),
+            Some(e) => format!("no member is signed in at {}", e.org_id()),
+            None => "no member is signed in".to_string(),
         })
-        .with_remedy("run `kp auth login --org kaiser-health-plan --label <WHO>`"));
+        .with_remedy(format!("run `kp auth login --org {at} --label <WHO>`")));
     }
     let chosen = match patient {
         None if narrowed.len() == 1 => narrowed[0].clone(),
@@ -298,6 +301,28 @@ mod tests {
             fhir_user: None,
             signed_in_at: "2020-01-01T00:00:00Z".into(),
         }
+    }
+
+    #[test]
+    fn the_remedy_signs_in_where_the_caller_asked() {
+        for who in ["adult1", "pat-0001"] {
+            let err = pick(&[], Some(who), Some(Environment::Sandbox)).unwrap_err();
+            assert_eq!(err.exit_code(), 3);
+            assert!(
+                err.to_string().contains("kaiser-health-plan-sandbox"),
+                "{err}"
+            );
+            assert!(!err.to_string().contains(who), "{err}");
+            assert_eq!(
+                err.remedy(),
+                Some("run `kp auth login --org kaiser-health-plan-sandbox --label <WHO>`")
+            );
+        }
+        let err = pick(&[], None, None).unwrap_err();
+        assert_eq!(
+            err.remedy(),
+            Some("run `kp auth login --org kaiser-health-plan --label <WHO>`")
+        );
     }
 
     #[test]

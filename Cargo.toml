@@ -1,7 +1,7 @@
 [package]
 name = "kaiser-cli"
 description = "Pull your own Kaiser Permanente health-plan claims (Explanation of Benefit) and coverage through Kaiser's CMS Patient Access API. Unofficial; not affiliated with or endorsed by Kaiser Permanente."
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 # pk-cli-auth's refresh lock (File::lock) needs 1.89.
 rust-version = "1.89"

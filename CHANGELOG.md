@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.1 — 2026-11-12
+
+- With no member signed in, the remedy names the organization asked for:
+  `kp records export --org sandbox` (as `medrec import --from kp --org
+  sandbox` runs it) now says `kp auth login --org
+  kaiser-health-plan-sandbox --label <WHO>`, not the production
+  organization.
+
 ## v0.1.0 — 2026-11-12
 
 - `orgs list` and `orgs search`: Kaiser Permanente's health plan and its
