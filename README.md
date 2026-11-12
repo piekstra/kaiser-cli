@@ -14,7 +14,7 @@ use [`mychart`](https://github.com/piekstra/mychart-cli) for those.
 
 ## Status
 
-v0.1.0. The sign-in and `records export` are tested against
+v0.1.1. The sign-in and `records export` are tested against
 medical-common's mock server; the first run against Kaiser's sandbox waits
 on the app's approval at developer.kp.org.
 
