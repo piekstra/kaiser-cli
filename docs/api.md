@@ -211,9 +211,10 @@ stores whatever the token response returns.
 separate organizations in `orgs list`, with separate client credentials
 (`client/production`, `client/sandbox`) and sign-ins
 (`smart/<org>/<patient>`), so a sandbox member never lands in the household's
-records as a real one. A server on this machine (medical-common's mock)
-is reached only under the sandbox's id: kp refuses to sign in or export a
-production member from one. `-o <DIR>` writes only the sandbox's records to
+records as a real one. A production sign-in goes to Kaiser's server only
+(https on `kp.org`); a sandbox one to Kaiser's or to a server on this
+machine (medical-common's mock). kp refuses any other `fhir_base` before
+the client id and secret are read. `-o <DIR>` writes only the sandbox's records to
 a file.
 
 ### Registration at developer.kp.org

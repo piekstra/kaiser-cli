@@ -22,4 +22,5 @@
 - Test data is invented. Never commit a real response, record or export;
   `tests/no_personal_data.rs` and gitleaks check every change.
 - Every change lands through a pull request with a review and green checks.
-- Dates on the command line are `YYYY-MM-DD`; every command takes `--json`.
+- Dates on the command line are `YYYY-MM-DD`. Every command takes
+  `--json`, except `records export --ndjson`, whose stream is the output.

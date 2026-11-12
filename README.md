@@ -72,10 +72,10 @@ sign-in, the network or the output fails.
 | `kp auth login [--org sandbox] [--label <WHO>] [--no-browser] [--timeout <MIN>]` | sign a member in; waits up to `--timeout` minutes (default 10, at most 60) |
 | `kp auth status` | what is stored (`auth-status/v1`), per environment and member |
 | `kp auth logout [--patient <WHO>] [--org <ORG>] [--forget]` | remove sign-ins; `--forget` also the client credentials and settings |
-| `kp patients list [--status]` | the signed-in members (`patient-list/v1`) |
+| `kp patients list [--status] [--org <ORG>]` | the signed-in members (`patient-list/v1`); `--status` reads each sign-in |
 | `kp records export --ndjson\|-o <DIR> [--since <DATE>]` | the member's records as `records-stream/v1`; `-o` for the sandbox only |
 | `kp api GET <PATH>` | one FHIR read as the member |
-| `kp config path\|show\|set\|unset` | `redirect_port` (default 7469), `fhir_base` |
+| `kp config path\|show\|set\|unset` | `redirect_port` (default 7469), `fhir_base` (Kaiser's, or a test server on this machine for the sandbox) |
 | `kp self-update`, `kp completions <SHELL>`, `kp info` | the family's standard commands |
 
 Every command takes `--json`, except `records export --ndjson`, whose

@@ -19,8 +19,9 @@ pub const KEYS: &str = "redirect_port, fhir_base";
 pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub redirect_port: Option<u16>,
-    /// Another FHIR base: a local test server (`http://127.0.0.1:<port>`), or
-    /// Kaiser's if it moves. Only https, or http to this machine.
+    /// Another FHIR base: a test server on this machine
+    /// (`http://127.0.0.1:<port>`, the sandbox's only), or Kaiser's if it
+    /// moves (https on kp.org).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fhir_base: Option<String>,
     /// Retired: the sandbox is its own organization now. Kept so a file that
@@ -29,7 +30,7 @@ pub struct Config {
     pub environment: Option<serde_json::Value>,
 }
 
-const ENVIRONMENT_RETIRED: &str = "the sandbox is its own organization: pass `--org kaiser-health-plan-sandbox` (or `--org sandbox`) to `auth login`, `patients`, `records export` and `api`";
+const ENVIRONMENT_RETIRED: &str = "the sandbox is its own organization: pass `--org kaiser-health-plan-sandbox` (or `--org sandbox`) to `auth login`, `patients list`, `records export` and `api`";
 
 impl Config {
     /// Refuses a file that still carries a retired key.
@@ -69,6 +70,11 @@ impl Config {
             }
             "fhir_base" => {
                 pk_cli_core::transport::require_secure_url(value)?;
+                if !(crate::kaiser::is_kaiser(value) || crate::kaiser::is_loopback(value)) {
+                    return Err(CliError::Usage(
+                        "fhir_base is Kaiser's (https on kp.org) or a test server on this machine; kp signs in nowhere else".into(),
+                    ));
+                }
                 self.fhir_base = Some(pk_med_fhir::normalize_base(value));
             }
             "environment" => {
@@ -115,6 +121,8 @@ mod tests {
         assert_eq!(c.redirect_uri(), "http://127.0.0.1:8123/callback");
         assert!(c.set("redirect_port", "80").is_err());
         assert!(c.set("fhir_base", "http://example.com/fhir").is_err());
+        assert!(c.set("fhir_base", "https://example.com/fhir").is_err());
+        c.set("fhir_base", "https://fhir.kp.org/r4").unwrap();
         c.set("fhir_base", "http://127.0.0.1:9/fhir/").unwrap();
         assert_eq!(c.fhir_base(), "http://127.0.0.1:9/fhir");
         c.unset("fhir_base").unwrap();

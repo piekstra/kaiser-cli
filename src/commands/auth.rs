@@ -125,7 +125,7 @@ fn login(ctx: &Ctx, args: &LoginArgs) -> Result<(), CliError> {
     }
     let config = ctx.config()?;
     let base = config.fhir_base();
-    kaiser::require_real_server(environment, &base)?;
+    kaiser::require_server(environment, &base)?;
     let client = ctx.client(environment)?;
     let t = transport()?;
     let smart = block_on(discover(
@@ -227,7 +227,9 @@ fn verify(t: &pk_cli_http::BlockingTransport, session: &SmartSession, patient: &
         .is_ok()
 }
 
-fn status(ctx: &Ctx) -> Result<(), CliError> {
+/// `auth-status/v1` with `clients` and `patients` rows. An item that cannot
+/// be read is its row's `error`, not the command's failure.
+pub fn status_of(ctx: &Ctx) -> Result<(AuthStatus, Value), CliError> {
     let state = ctx.state_file()?.load()?;
     let sessions = Sessions(ctx.vault.clone());
     let mut clients = Vec::new();
@@ -275,8 +277,15 @@ fn status(ctx: &Ctx) -> Result<(), CliError> {
     status.credential_in_keychain = Some(any_stored || any_client);
     status.session_valid = Some(any_usable);
     let mut v = status.to_json();
-    v["clients"] = Value::Array(clients.clone());
-    v["patients"] = Value::Array(rows.clone());
+    v["clients"] = Value::Array(clients);
+    v["patients"] = Value::Array(rows);
+    Ok((status, v))
+}
+
+fn status(ctx: &Ctx) -> Result<(), CliError> {
+    let (status, v) = status_of(ctx)?;
+    let clients = v["clients"].as_array().cloned().unwrap_or_default();
+    let rows = v["patients"].as_array().cloned().unwrap_or_default();
     if ctx.json() {
         output::json(&v);
     } else {

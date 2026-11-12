@@ -417,6 +417,31 @@ fn a_production_member_never_comes_from_this_machine() {
 }
 
 #[test]
+fn no_member_signs_in_at_a_server_that_is_neither_kaiser_nor_this_machine() {
+    let dir = tempfile::tempdir().unwrap();
+    let mock = MockServer::start();
+    let ctx = ctx(dir.path(), &mock);
+    // A base set by hand in the file, past `config set`'s own check.
+    let path = ctx.store.path().unwrap();
+    std::fs::write(&path, r#"{"fhir_base":"https://mock.example:8080/fhir"}"#).unwrap();
+    for org in ["kaiser-health-plan", "sandbox"] {
+        let err = commands::auth::run(
+            &ctx,
+            &AuthCmd::Login(LoginArgs {
+                org: org.into(),
+                label: None,
+                no_browser: true,
+                timeout: 1,
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err.exit_code(), 2, "{org}: {err}");
+        assert!(!err.to_string().contains("synthetic-secret"));
+    }
+    assert!(mock.requests().is_empty());
+}
+
+#[test]
 fn one_unreadable_sign_in_does_not_hide_the_others() {
     let dir = tempfile::tempdir().unwrap();
     let mock = MockServer::start();
@@ -431,8 +456,28 @@ fn one_unreadable_sign_in_does_not_hide_the_others() {
         .unwrap();
     state.upsert_context(other);
     ctx.state_file().unwrap().save(&state).unwrap();
-    commands::auth::run(&ctx, &AuthCmd::Status).unwrap();
-    commands::patients::run(&ctx, &kp::cli::PatientsCmd::List { status: false }).unwrap();
+    let (_, status) = commands::auth::status_of(&ctx).unwrap();
+    let rows = status["patients"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["label"], "adult1");
+    assert_eq!(rows[0]["usable"], true);
+    assert!(rows[0].get("error").is_none());
+    assert_eq!(rows[1]["label"], "child1");
+    assert_eq!(rows[1]["usable"], false);
+    assert!(rows[1]["error"].as_str().is_some_and(|e| !e.is_empty()));
+    assert!(!rows[1]["error"].as_str().unwrap().contains("pat-0002"));
+    assert_eq!(status["authenticated"], true);
+
+    let list = commands::patients::list(&ctx, true, None).unwrap();
+    let items = list["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["usable"], true);
+    assert_eq!(items[1]["usable"], false);
+    assert!(items[1]["error"].is_string());
+    let sandbox = commands::patients::list(&ctx, false, Some("sandbox")).unwrap();
+    assert_eq!(sandbox["items"].as_array().unwrap().len(), 2);
+    let production = commands::patients::list(&ctx, false, Some("kaiser-health-plan")).unwrap();
+    assert_eq!(production["items"], serde_json::json!([]));
 }
 
 #[test]

@@ -70,12 +70,14 @@ Medical records are the most sensitive data a household has.
 - `records export -o` writes only the sandbox's records to a file, and
   refuses before the Keychain otherwise: a real member's records go to
   stdout, straight into `medrec import`.
-- A server on this machine (the mock) serves synthetic members, so it is
-  reached only as `kaiser-health-plan-sandbox`: `auth login` and
-  `records export` refuse the production organization there
-  (`kaiser::require_real_server`, which parses the host). medrec files
-  records by organization id, and a synthetic member must never carry the
-  production one.
+- Where a sign-in may go is an allowlist (`kaiser::require_server`, on the
+  parsed host): `kaiser-health-plan` to Kaiser's server only (https on
+  `kp.org`), `kaiser-health-plan-sandbox` to Kaiser's or to a server on
+  this machine (the mock). `config set fhir_base` refuses any other host,
+  and `auth login`, `records export` and `api` check again. So the client
+  secret never reaches another host, and a synthetic or foreign member
+  never carries the production organization id, by which medrec files
+  records.
 - Every binary-producing `make` target signs with the stable
   `pk-cli-codesign` identity.
 

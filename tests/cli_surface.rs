@@ -192,7 +192,6 @@ fn bad_arguments_are_refused_before_anything_else() {
             2,
         ),
         (vec!["api", "POST", "Patient"], 2),
-        (vec!["patients", "list", "--org", "x"], 2),
         (vec!["config", "set", "nope", "x"], 2),
         (vec!["config", "set", "environment", "sandbox"], 2),
         (vec!["config", "set", "redirect_port", "80"], 2),
@@ -200,6 +199,11 @@ fn bad_arguments_are_refused_before_anything_else() {
             vec!["config", "set", "fhir_base", "http://example.com/fhir"],
             2,
         ),
+        (
+            vec!["config", "set", "fhir_base", "https://example.com/fhir"],
+            2,
+        ),
+        (vec!["patients", "list", "--org", "nope"], 4),
     ] {
         kp(&home).args(&args).assert().code(code);
     }

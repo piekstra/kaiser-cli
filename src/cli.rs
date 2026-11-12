@@ -135,6 +135,10 @@ pub enum PatientsCmd {
         /// (reads the Keychain).
         #[arg(long)]
         status: bool,
+        /// Only members at this organization: `kaiser-health-plan` or
+        /// `kaiser-health-plan-sandbox` (`sandbox` for short).
+        #[arg(long, value_name = "ORG")]
+        org: Option<String>,
     },
 }
 

@@ -167,16 +167,43 @@ pub fn is_loopback(base: &str) -> bool {
     }
 }
 
-/// A production member comes from Kaiser's server only. A server on this
-/// machine serves synthetic members, which go under the sandbox's
-/// organization so medrec never files them as a real member's.
-pub fn require_real_server(environment: Environment, base: &str) -> Result<(), CliError> {
-    if environment == Environment::Production && is_loopback(base) {
-        return Err(CliError::Usage(format!(
-            "{base} is a server on this machine, whose members are synthetic; use `--org {SANDBOX_ORG_ID}` with it, not {ORG_ID}"
-        )));
+/// Whether `base` is Kaiser's: https on `kp.org` or a host under it, by the
+/// parsed host.
+pub fn is_kaiser(base: &str) -> bool {
+    let Ok(url) = url::Url::parse(base) else {
+        return false;
+    };
+    url.scheme() == "https"
+        && matches!(url.host(), Some(url::Host::Domain(name))
+            if name.eq_ignore_ascii_case("kp.org") || name.to_ascii_lowercase().ends_with(".kp.org"))
+}
+
+/// Where a sign-in may go, before the client id and secret travel: a
+/// production member to Kaiser's server only, a sandbox member to Kaiser's
+/// or to a server on this machine (the mock), whose members are synthetic
+/// and so carry the sandbox's id. Anything else is refused, so the client
+/// secret, which Kaiser's terms keep confidential, never reaches another
+/// host, and no other server's records reach medrec as a real member's.
+pub fn require_server(environment: Environment, base: &str) -> Result<(), CliError> {
+    let allowed = match environment {
+        Environment::Production => is_kaiser(base),
+        Environment::Sandbox => is_kaiser(base) || is_loopback(base),
+    };
+    if allowed {
+        return Ok(());
     }
-    Ok(())
+    let origin = url::Url::parse(base)
+        .map(|u| u.origin().ascii_serialization())
+        .unwrap_or_else(|_| "that address".into());
+    Err(CliError::Usage(match environment {
+        Environment::Production => format!(
+            "{origin} is not Kaiser's server; {ORG_ID} signs in and reads only at https://…kp.org (a server on this machine is `--org {SANDBOX_ORG_ID}`)"
+        ),
+        Environment::Sandbox => format!(
+            "{origin} is neither Kaiser's server nor one on this machine; {SANDBOX_ORG_ID} goes to one of those only"
+        ),
+    })
+    .with_remedy("run `kp config unset fhir_base` for Kaiser's own"))
 }
 
 impl VendorQuirks for KaiserQuirks {
@@ -208,9 +235,37 @@ mod tests {
         ] {
             assert!(!is_loopback(base), "{base}");
         }
-        assert!(require_real_server(Environment::Production, "http://127.0.0.1:9/fhir").is_err());
-        require_real_server(Environment::Sandbox, "http://127.0.0.1:9/fhir").unwrap();
-        require_real_server(Environment::Production, FHIR_BASE).unwrap();
+    }
+
+    #[test]
+    fn a_sign_in_goes_only_to_kaiser_or_for_the_sandbox_this_machine() {
+        for base in [FHIR_BASE, "https://fhir.kp.org/r4", "https://KP.ORG/fhir"] {
+            assert!(is_kaiser(base), "{base}");
+            require_server(Environment::Production, base).unwrap();
+            require_server(Environment::Sandbox, base).unwrap();
+        }
+        for base in [
+            "https://kp.org.evil.example/fhir",
+            "https://evilkp.org/fhir",
+            "https://user@other.example/x.kp.org",
+            "http://kpx-service-bus.kp.org/fhir",
+            "https://mock:8080/fhir",
+            "https://10.0.0.5/fhir",
+        ] {
+            assert!(!is_kaiser(base), "{base}");
+            assert_eq!(
+                require_server(Environment::Production, base)
+                    .unwrap_err()
+                    .exit_code(),
+                2
+            );
+            assert!(
+                require_server(Environment::Sandbox, base).is_err(),
+                "{base}"
+            );
+        }
+        assert!(require_server(Environment::Production, "http://127.0.0.1:9/fhir").is_err());
+        require_server(Environment::Sandbox, "http://127.0.0.1:9/fhir").unwrap();
     }
 
     #[test]
