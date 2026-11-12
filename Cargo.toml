@@ -1,0 +1,48 @@
+[package]
+name = "kaiser-cli"
+description = "Pull your own Kaiser Permanente health-plan claims (Explanation of Benefit) and coverage through Kaiser's CMS Patient Access API. Unofficial; not affiliated with or endorsed by Kaiser Permanente."
+version = "0.1.0"
+edition = "2021"
+# pk-cli-auth's refresh lock (File::lock) needs 1.89.
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/piekstra/kaiser-cli"
+homepage = "https://github.com/piekstra/kaiser-cli"
+authors = ["piekstra"]
+keywords = ["fhir", "carin-blue-button", "kaiser-permanente", "claims", "health-records"]
+categories = ["command-line-utilities"]
+publish = false
+
+[lib]
+name = "kp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kp"
+path = "src/main.rs"
+
+[dependencies]
+# Every pk-cli-* on the cli-common tag medical-common pins (its DESIGN.md §3):
+# two tags in one build are two copies of every pk-cli-core type.
+pk-cli-core = { git = "https://github.com/piekstra/cli-common", tag = "v0.31.0", features = ["reqwest"] }
+pk-cli-secrets = { git = "https://github.com/piekstra/cli-common", tag = "v0.31.0" }
+pk-cli-auth = { git = "https://github.com/piekstra/cli-common", tag = "v0.31.0" }
+pk-cli-config = { git = "https://github.com/piekstra/cli-common", tag = "v0.31.0" }
+pk-cli-drive = { git = "https://github.com/piekstra/cli-common", tag = "v0.31.0" }
+pk-cli-selfupdate = { git = "https://github.com/piekstra/cli-common", tag = "v0.31.0" }
+pk-med-records = { git = "https://github.com/piekstra/medical-common", tag = "v0.1.0" }
+pk-med-fhir = { git = "https://github.com/piekstra/medical-common", tag = "v0.1.0" }
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "z"
