@@ -14,9 +14,26 @@ use [`mychart`](https://github.com/piekstra/mychart-cli) for those.
 
 ## Status
 
-Not released yet. The sign-in and `records export` are tested against
+v0.1.0. The sign-in and `records export` are tested against
 medical-common's mock server; the first run against Kaiser's sandbox waits
 on the app's approval at developer.kp.org.
+
+## Install
+
+Pick the target (`aarch64-apple-darwin` for Apple Silicon,
+`x86_64-apple-darwin` for an Intel Mac, `x86_64-unknown-linux-gnu`), check
+the archive against its `.sha256`, then put `kp` on your PATH:
+
+```sh
+t=aarch64-apple-darwin
+u=https://github.com/piekstra/kaiser-cli/releases/latest/download/kp-$t.tar.gz
+curl -sSLO "$u" && curl -sSLO "$u.sha256"
+shasum -a 256 -c "kp-$t.tar.gz.sha256"    # on Linux: sha256sum -c
+tar xzf "kp-$t.tar.gz" && mkdir -p ~/.local/bin && mv kp ~/.local/bin/
+kp self-update                            # later releases
+```
+
+From source: `make install`.
 
 ## Setup
 
