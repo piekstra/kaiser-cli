@@ -1175,6 +1175,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "url",
 ]
 
 [[package]]

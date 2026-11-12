@@ -211,8 +211,10 @@ stores whatever the token response returns.
 separate organizations in `orgs list`, with separate client credentials
 (`client/production`, `client/sandbox`) and sign-ins
 (`smart/<org>/<patient>`), so a sandbox member never lands in the household's
-records as a real one. `-o <DIR>` writes only the sandbox's or a 127.0.0.1
-server's records to a file.
+records as a real one. A server on this machine (medical-common's mock)
+is reached only under the sandbox's id: kp refuses to sign in or export a
+production member from one. `-o <DIR>` writes only the sandbox's records to
+a file.
 
 ### Registration at developer.kp.org
 

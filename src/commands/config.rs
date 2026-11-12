@@ -35,7 +35,8 @@ pub fn run(ctx: &Ctx, cmd: &ConfigCmd) -> Result<(), CliError> {
             Ok(())
         }
         ConfigCmd::Unset { key } => {
-            let mut cfg: Config = ctx.config()?;
+            // Not `ctx.config()`, which refuses a retired key this removes.
+            let mut cfg: Config = ctx.store.load()?;
             cfg.unset(key)?;
             ctx.store.save(&cfg)?;
             ctx.note(format!("{key} unset"));

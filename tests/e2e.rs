@@ -380,7 +380,90 @@ fn set_credential_then_status_reads_both() {
     .unwrap();
     let state = ctx.state_file().unwrap().load().unwrap();
     assert!(state.has_client(Environment::Production));
+    let production = credentials::read_client(ctx.vault.as_ref(), Environment::Production)
+        .unwrap()
+        .unwrap();
+    assert_eq!(production.client_id, "client-one");
+    assert_eq!(production.secret().expose(), "secret-one");
+    // The sandbox pair `ctx` stored is untouched.
+    let sandbox = credentials::read_client(ctx.vault.as_ref(), Environment::Sandbox)
+        .unwrap()
+        .unwrap();
+    assert_eq!(sandbox.client_id, CLIENT_ID);
     commands::auth::run(&ctx, &AuthCmd::Status).unwrap();
+}
+
+#[test]
+fn a_production_member_never_comes_from_this_machine() {
+    let dir = tempfile::tempdir().unwrap();
+    let mock = MockServer::start();
+    let ctx = ctx(dir.path(), &mock);
+    let err = commands::auth::run(
+        &ctx,
+        &AuthCmd::Login(LoginArgs {
+            org: "kaiser-health-plan".into(),
+            label: None,
+            no_browser: true,
+            timeout: 1,
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(err.exit_code(), 2, "{err}");
+    assert!(
+        err.to_string().contains("kaiser-health-plan-sandbox"),
+        "{err}"
+    );
+    assert!(mock.requests().is_empty());
+}
+
+#[test]
+fn one_unreadable_sign_in_does_not_hide_the_others() {
+    let dir = tempfile::tempdir().unwrap();
+    let mock = MockServer::start();
+    let ctx = ctx(dir.path(), &mock);
+    login(&ctx, "adult1");
+    let mut state = ctx.state_file().unwrap().load().unwrap();
+    let mut other = state.contexts[0].clone();
+    other.id = "pat-0002".into();
+    other.label = Some("child1".into());
+    ctx.vault
+        .write(&other.account(), &pk_cli_secrets::Secret::new("{not json"))
+        .unwrap();
+    state.upsert_context(other);
+    ctx.state_file().unwrap().save(&state).unwrap();
+    commands::auth::run(&ctx, &AuthCmd::Status).unwrap();
+    commands::patients::run(&ctx, &kp::cli::PatientsCmd::List { status: false }).unwrap();
+}
+
+#[test]
+fn logout_forget_works_past_a_broken_state_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let mock = MockServer::start();
+    let ctx = ctx(dir.path(), &mock);
+    let state_file = ctx.state_file().unwrap();
+    std::fs::write(state_file.path(), "{broken").unwrap();
+    assert!(commands::auth::run(
+        &ctx,
+        &AuthCmd::Logout(LogoutArgs {
+            who: PatientArgs::default(),
+            forget: false,
+        }),
+    )
+    .is_err());
+    commands::auth::run(
+        &ctx,
+        &AuthCmd::Logout(LogoutArgs {
+            who: PatientArgs::default(),
+            forget: true,
+        }),
+    )
+    .unwrap();
+    assert!(!state_file.path().exists());
+    assert!(
+        credentials::read_client(ctx.vault.as_ref(), Environment::Sandbox)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]

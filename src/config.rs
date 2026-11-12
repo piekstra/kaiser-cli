@@ -1,6 +1,6 @@
 //! Non-secret settings (`~/.config/kp/config.json`). The client id and secret
 //! Kaiser issues are credentials under Kaiser's developer terms, so they live
-//! in the Keychain (`kp auth client set`), never here.
+//! in the Keychain (`kp auth set-credential`), never here.
 
 use pk_cli_core::CliError;
 use serde::{Deserialize, Serialize};
@@ -23,9 +23,26 @@ pub struct Config {
     /// Kaiser's if it moves. Only https, or http to this machine.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fhir_base: Option<String>,
+    /// Retired: the sandbox is its own organization now. Kept so a file that
+    /// still has it is refused with that news instead of read as production.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<serde_json::Value>,
 }
 
+const ENVIRONMENT_RETIRED: &str = "the sandbox is its own organization: pass `--org kaiser-health-plan-sandbox` (or `--org sandbox`) to `auth login`, `patients`, `records export` and `api`";
+
 impl Config {
+    /// Refuses a file that still carries a retired key.
+    pub fn check(&self) -> Result<(), CliError> {
+        if self.environment.is_some() {
+            return Err(CliError::Usage(format!(
+                "the config's `environment` key is retired; {ENVIRONMENT_RETIRED}"
+            ))
+            .with_remedy("run `kp config unset environment`"));
+        }
+        Ok(())
+    }
+
     pub fn redirect_port(&self) -> u16 {
         self.redirect_port.unwrap_or(DEFAULT_REDIRECT_PORT)
     }
@@ -54,6 +71,11 @@ impl Config {
                 pk_cli_core::transport::require_secure_url(value)?;
                 self.fhir_base = Some(pk_med_fhir::normalize_base(value));
             }
+            "environment" => {
+                return Err(CliError::Usage(format!(
+                    "`environment` is retired; {ENVIRONMENT_RETIRED}"
+                )))
+            }
             other => return Err(unknown(other)),
         }
         Ok(())
@@ -63,6 +85,7 @@ impl Config {
         match key {
             "redirect_port" => self.redirect_port = None,
             "fhir_base" => self.fhir_base = None,
+            "environment" => self.environment = None,
             other => return Err(unknown(other)),
         }
         Ok(())
@@ -97,5 +120,24 @@ mod tests {
         c.unset("fhir_base").unwrap();
         assert_eq!(c.fhir_base(), FHIR_BASE);
         assert_eq!(c.set("nope", "x").unwrap_err().exit_code(), 2);
+    }
+
+    #[test]
+    fn the_retired_environment_key_is_refused_until_unset() {
+        let mut c: Config = serde_json::from_str(r#"{"environment":"sandbox"}"#).unwrap();
+        let err = c.check().unwrap_err();
+        assert_eq!(err.exit_code(), 2);
+        assert!(
+            err.to_string().contains("kaiser-health-plan-sandbox"),
+            "{err}"
+        );
+        assert!(c
+            .set("environment", "sandbox")
+            .unwrap_err()
+            .to_string()
+            .contains("--org"));
+        c.unset("environment").unwrap();
+        c.check().unwrap();
+        assert_eq!(serde_json::to_string(&c).unwrap(), "{}");
     }
 }

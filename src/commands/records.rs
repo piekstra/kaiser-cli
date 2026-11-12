@@ -42,11 +42,10 @@ fn validate(args: &ExportArgs, json: bool) -> Result<(), CliError> {
 }
 
 /// Whether a context's records are synthetic: Kaiser's sandbox, or a server
-/// on this machine. Only those go to a plain file with `-o`.
-fn synthetic(context: &Context, fhir_base: &str) -> bool {
+/// on this machine, which only the sandbox's organization may name
+/// ([`kaiser::require_real_server`]). Only those go to a plain file.
+fn synthetic(context: &Context) -> bool {
     context.organization == Environment::Sandbox.org_id()
-        || fhir_base.starts_with("http://127.0.0.1:")
-        || fhir_base.starts_with("http://localhost:")
 }
 
 /// Run an export. `Err` is a failure before anything was written;
@@ -57,7 +56,7 @@ pub fn export(ctx: &Ctx, args: &ExportArgs) -> Result<Option<CliError>, CliError
     let context = ctx.signed_in(&args.who)?;
     let environment = context.environment()?;
     // Refused before the Keychain is opened.
-    if args.output.is_some() && !synthetic(&context, &ctx.config()?.fhir_base()) {
+    if args.output.is_some() && !synthetic(&context) {
         return Err(CliError::Usage(format!(
             "-o writes records to a plain file, so it is for Kaiser's sandbox and test servers only; member {} is at {}",
             context.display(),
@@ -70,11 +69,7 @@ pub fn export(ctx: &Ctx, args: &ExportArgs) -> Result<Option<CliError>, CliError
     }
     let live = ctx.live(&context)?;
     let fhir_base = live.fhir_base();
-    if args.output.is_some() && !synthetic(&context, &fhir_base) {
-        return Err(CliError::Usage(
-            "-o is for Kaiser's sandbox and test servers only".into(),
-        ));
-    }
+    kaiser::require_real_server(environment, &fhir_base)?;
     let t = transport()?;
     let source = live.clone();
     let mut fhir = FhirClient::new(&t, &fhir_base, BIN, env!("CARGO_PKG_VERSION"))?
@@ -197,14 +192,7 @@ mod tests {
             fhir_user: None,
             signed_in_at: "2020-01-01T00:00:00Z".into(),
         };
-        assert!(synthetic(
-            &c("kaiser-health-plan-sandbox"),
-            kaiser::FHIR_BASE
-        ));
-        assert!(synthetic(
-            &c("kaiser-health-plan"),
-            "http://127.0.0.1:9/fhir"
-        ));
-        assert!(!synthetic(&c("kaiser-health-plan"), kaiser::FHIR_BASE));
+        assert!(synthetic(&c("kaiser-health-plan-sandbox")));
+        assert!(!synthetic(&c("kaiser-health-plan")));
     }
 }

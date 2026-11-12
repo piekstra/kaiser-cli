@@ -152,6 +152,33 @@ pub fn resolve_org(value: &str) -> Result<Environment, CliError> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct KaiserQuirks;
 
+/// Whether `base` is a server on this machine (`127.0.0.0/8`, `::1`,
+/// `localhost`), read by the URL parser, not by prefix: in
+/// `http://127.0.0.1:80@example.org/` the host is example.org.
+pub fn is_loopback(base: &str) -> bool {
+    let Ok(url) = url::Url::parse(base) else {
+        return false;
+    };
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        None => false,
+    }
+}
+
+/// A production member comes from Kaiser's server only. A server on this
+/// machine serves synthetic members, which go under the sandbox's
+/// organization so medrec never files them as a real member's.
+pub fn require_real_server(environment: Environment, base: &str) -> Result<(), CliError> {
+    if environment == Environment::Production && is_loopback(base) {
+        return Err(CliError::Usage(format!(
+            "{base} is a server on this machine, whose members are synthetic; use `--org {SANDBOX_ORG_ID}` with it, not {ORG_ID}"
+        )));
+    }
+    Ok(())
+}
+
 impl VendorQuirks for KaiserQuirks {
     fn metadata_first(&self) -> bool {
         true
@@ -161,6 +188,30 @@ impl VendorQuirks for KaiserQuirks {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loopback_is_the_parsed_host() {
+        for base in [
+            "http://127.0.0.1:9/fhir",
+            "http://127.1.2.3/fhir",
+            "http://localhost:8080/fhir",
+            "http://[::1]:9/fhir",
+        ] {
+            assert!(is_loopback(base), "{base}");
+        }
+        for base in [
+            "http://127.0.0.1:80@other.example/fhir",
+            "http://127.0.0.1.evil.example:1/",
+            "http://localhost.evil.example/",
+            FHIR_BASE,
+            "not a url",
+        ] {
+            assert!(!is_loopback(base), "{base}");
+        }
+        assert!(require_real_server(Environment::Production, "http://127.0.0.1:9/fhir").is_err());
+        require_real_server(Environment::Sandbox, "http://127.0.0.1:9/fhir").unwrap();
+        require_real_server(Environment::Production, FHIR_BASE).unwrap();
+    }
 
     #[test]
     fn scopes_per_environment() {

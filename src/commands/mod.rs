@@ -68,7 +68,9 @@ impl Ctx {
     }
 
     pub fn config(&self) -> Result<Config, CliError> {
-        self.store.load()
+        let config: Config = self.store.load()?;
+        config.check()?;
+        Ok(config)
     }
 
     pub fn state_file(&self) -> Result<StateFile, CliError> {

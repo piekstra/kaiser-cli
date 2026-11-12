@@ -38,6 +38,7 @@ clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
+url = "2"
 
 [dev-dependencies]
 pk-med-fhir = { git = "https://github.com/piekstra/medical-common", tag = "v0.2.0", features = ["test-util"] }

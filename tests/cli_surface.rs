@@ -255,6 +255,25 @@ fn config_round_trips() {
 }
 
 #[test]
+fn a_config_with_the_retired_environment_key_is_refused_until_unset() {
+    let home = tmp();
+    let dir = home.join("config/kp");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("config.json"), r#"{"environment":"sandbox"}"#).unwrap();
+    kp(&home)
+        .args(["auth", "login", "--org", "sandbox"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("kaiser-health-plan-sandbox"))
+        .stderr(predicate::str::contains("kp config unset environment"));
+    kp(&home)
+        .args(["config", "unset", "environment"])
+        .assert()
+        .success();
+    kp(&home).args(["config", "show"]).assert().success();
+}
+
+#[test]
 fn no_color_is_accepted() {
     let home = tmp();
     kp(&home)

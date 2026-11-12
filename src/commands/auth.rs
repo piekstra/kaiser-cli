@@ -124,8 +124,9 @@ fn login(ctx: &Ctx, args: &LoginArgs) -> Result<(), CliError> {
         return Err(CliError::Usage("--timeout is from 1 to 60 minutes".into()));
     }
     let config = ctx.config()?;
-    let client = ctx.client(environment)?;
     let base = config.fhir_base();
+    kaiser::require_real_server(environment, &base)?;
+    let client = ctx.client(environment)?;
     let t = transport()?;
     let smart = block_on(discover(
         &t,
@@ -179,13 +180,26 @@ fn login(ctx: &Ctx, args: &LoginArgs) -> Result<(), CliError> {
                 .into(),
         ));
     }
-    let sessions = Sessions(ctx.vault.clone());
-    ctx.lock.store_signin(|| sessions.save(&session))?;
+    // The state row first: it is the index `logout` removes Keychain items
+    // by, so a sign-in item never exists without one. A row whose item
+    // failed to store reads as signed out, and is removed if it is new.
     let context = Context::from_session(&session, args.label.clone(), rfc3339(now()));
     let state_file = ctx.state_file()?;
     let mut state = state_file.load()?;
+    let existed = state
+        .contexts
+        .iter()
+        .any(|c| c.organization == context.organization && c.id == context.id);
     state.upsert_context(context.clone());
     state_file.save(&state)?;
+    let sessions = Sessions(ctx.vault.clone());
+    if let Err(e) = ctx.lock.store_signin(|| sessions.save(&session)) {
+        if !existed {
+            state.remove_context(&context.organization, &context.id);
+            let _ = state_file.save(&state);
+        }
+        return Err(e);
+    }
     let verified = verify(&t, &session, &context.id);
     if !verified {
         ctx.note(
@@ -220,23 +234,35 @@ fn status(ctx: &Ctx) -> Result<(), CliError> {
     let mut any_client = false;
     for environment in Environment::ALL {
         // The Keychain is read only for what the state records, so a
-        // logged-out status raises no prompt.
-        let stored = state.has_client(environment)
-            && credentials::read_client(ctx.vault.as_ref(), environment)?.is_some();
-        any_client |= stored;
-        clients.push(json!({ "environment": environment.as_str(), "stored": stored }));
+        // logged-out status raises no prompt. An item that cannot be read is
+        // that row's state, not the command's failure.
+        let mut row = json!({ "environment": environment.as_str(), "stored": false });
+        if state.has_client(environment) {
+            match credentials::read_client(ctx.vault.as_ref(), environment) {
+                Ok(found) => row["stored"] = found.is_some().into(),
+                Err(e) => row["error"] = e.message().into(),
+            }
+        }
+        any_client |= row["stored"] == true;
+        clients.push(row);
     }
     let mut rows = Vec::new();
     let mut any_stored = false;
     let mut any_usable = false;
     for c in &state.contexts {
-        let session = sessions.load(&c.account())?;
-        let usable = session
-            .as_ref()
-            .is_some_and(|s| !s.tokens.is_expired(now(), 0) || s.renewable());
+        let mut row = serde_json::to_value(c.patient_context()).unwrap_or_default();
+        let session = match sessions.load(&c.account()) {
+            Ok(session) => session,
+            Err(e) => {
+                row["error"] = e.message().into();
+                None
+            }
+        };
+        let usable = session.as_ref().is_some_and(|s| {
+            (s.refused_at.is_none() && !s.tokens.is_expired(now(), 0)) || s.renewable()
+        });
         any_stored |= session.is_some();
         any_usable |= usable;
-        let mut row = serde_json::to_value(c.patient_context()).unwrap_or_default();
         row["credential_in_keychain"] = session.is_some().into();
         row["usable"] = usable.into();
         row["renewable"] = session.as_ref().is_some_and(SmartSession::renewable).into();
@@ -260,9 +286,11 @@ fn status(ctx: &Ctx) -> Result<(), CliError> {
                 "Client ({}): {}",
                 c["environment"].as_str().unwrap_or_default(),
                 if c["stored"] == true {
-                    "stored"
+                    "stored".to_string()
+                } else if let Some(e) = c["error"].as_str() {
+                    format!("unreadable ({e})")
                 } else {
-                    "not stored (`kp auth set-credential`)"
+                    "not stored (`kp auth set-credential`)".to_string()
                 }
             );
         }
@@ -280,6 +308,7 @@ fn status(ctx: &Ctx) -> Result<(), CliError> {
                         "usable": r["usable"],
                         "renewable": r["renewable"],
                         "token_expires": r["token_expires_at"],
+                        "error": r["error"],
                     })
                 })
                 .collect();
@@ -297,7 +326,22 @@ fn logout(ctx: &Ctx, args: &LogoutArgs) -> Result<(), CliError> {
         .map(kaiser::resolve_org)
         .transpose()?;
     let state_file = ctx.state_file()?;
-    let mut state = state_file.load()?;
+    // `--forget` goes on past a state file it cannot read, so the way to
+    // remove kp's credentials never depends on it.
+    let mut state = match state_file.load() {
+        Ok(state) => state,
+        Err(e) if args.forget => {
+            eprintln!(
+                "warning: {} could not be read ({}), so the members it listed are unknown; \
+                 their sign-ins stay in the Keychain as `smart/…` items of service {}",
+                state_file.path().display(),
+                e.message(),
+                ctx.vault.service()
+            );
+            crate::state::State::default()
+        }
+        Err(e) => return Err(e),
+    };
     let chosen: Vec<Context> = match &args.who.patient {
         Some(q) => vec![crate::session::pick(&state.contexts, Some(q), org)?.clone()],
         None => state

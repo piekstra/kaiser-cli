@@ -62,13 +62,20 @@ Medical records are the most sensitive data a household has.
 
 ## Conventions
 
-- `--json` on every command, one schema-tagged document on stdout.
+- `--json` on every command, one schema-tagged document on stdout, except
+  `records export --ndjson`, whose stream is the output.
 - Arguments, and secrets from `--stdin` or `--from-env`, are checked before
   the Keychain or the network.
 - Read-only: kp never writes to Kaiser; `api` takes GET only.
-- `records export -o` writes only a sandbox or 127.0.0.1 server's records
-  to a file, and refuses before the Keychain otherwise: a real member's
-  records go to stdout, straight into `medrec import`.
+- `records export -o` writes only the sandbox's records to a file, and
+  refuses before the Keychain otherwise: a real member's records go to
+  stdout, straight into `medrec import`.
+- A server on this machine (the mock) serves synthetic members, so it is
+  reached only as `kaiser-health-plan-sandbox`: `auth login` and
+  `records export` refuse the production organization there
+  (`kaiser::require_real_server`, which parses the host). medrec files
+  records by organization id, and a synthetic member must never carry the
+  production one.
 - Every binary-producing `make` target signs with the stable
   `pk-cli-codesign` identity.
 

@@ -99,7 +99,8 @@ pub struct SetCredentialArgs {
 
 #[derive(Args, Debug)]
 pub struct LoginArgs {
-    /// The organization: `kaiser-health-plan` (the default), or `sandbox`
+    /// The organization, an id from `kp orgs list`: `kaiser-health-plan`
+    /// (the default), or `kaiser-health-plan-sandbox` (`sandbox` for short)
     /// for Kaiser's synthetic test members.
     #[arg(long, value_name = "ORG", default_value = "kaiser-health-plan")]
     pub org: String,
@@ -144,8 +145,8 @@ pub struct PatientArgs {
     /// `patients list`. Needed when more than one member is signed in.
     #[arg(long, value_name = "ID")]
     pub patient: Option<String>,
-    /// Only members at this organization (`kaiser-health-plan` or
-    /// `sandbox`).
+    /// Only members at this organization: `kaiser-health-plan` or
+    /// `kaiser-health-plan-sandbox` (`sandbox` for short).
     #[arg(long, value_name = "ORG")]
     pub org: Option<String>,
 }

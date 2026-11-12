@@ -69,7 +69,7 @@ sign-in, the network or the output fails.
 |---|---|
 | `kp orgs list`, `kp orgs search <TEXT>` | the health plan and its sandbox (`org-list/v1`) |
 | `kp auth set-credential [--sandbox] [--overwrite]` | store the app's client id and secret |
-| `kp auth login [--org sandbox] [--label <WHO>] [--no-browser]` | sign a member in |
+| `kp auth login [--org sandbox] [--label <WHO>] [--no-browser] [--timeout <MIN>]` | sign a member in; waits up to `--timeout` minutes (default 10, at most 60) |
 | `kp auth status` | what is stored (`auth-status/v1`), per environment and member |
 | `kp auth logout [--patient <WHO>] [--org <ORG>] [--forget]` | remove sign-ins; `--forget` also the client credentials and settings |
 | `kp patients list [--status]` | the signed-in members (`patient-list/v1`) |
@@ -78,7 +78,8 @@ sign-in, the network or the output fails.
 | `kp config path\|show\|set\|unset` | `redirect_port` (default 7469), `fhir_base` |
 | `kp self-update`, `kp completions <SHELL>`, `kp info` | the family's standard commands |
 
-Every command takes `--json`. Exit codes: 0 ok, 2 usage, 3 auth, 4 not
+Every command takes `--json`, except `records export --ndjson`, whose
+output is already the NDJSON stream. Exit codes: 0 ok, 2 usage, 3 auth, 4 not
 found, 5 upstream, 6 confirmation required.
 
 ## Build

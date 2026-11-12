@@ -19,8 +19,11 @@
   `records-stream/v1`, for `medrec import --from kp`. A token Kaiser
   refuses is renewed once; refused or failing searches are skips. `-o`
   replaces `records.ndjson` only with a complete stream (an incomplete one
-  goes to `records.incomplete.ndjson`), and only for the sandbox or a
-  127.0.0.1 server.
+  goes to `records.incomplete.ndjson`), and only for the sandbox. A
+  production member is never signed in or exported from a server on this
+  machine; its members are synthetic and go under the sandbox's id.
+- A config that still has the retired `environment` key is refused, naming
+  `--org kaiser-health-plan-sandbox`, until `kp config unset environment`.
 - On medical-common v0.2.0 and cli-common v0.31.1.
 - `api GET <PATH>`: one FHIR read as the member.
 - `config`: `redirect_port`, `fhir_base`.
