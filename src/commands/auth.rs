@@ -135,6 +135,10 @@ fn login(ctx: &Ctx, args: &LoginArgs) -> Result<(), CliError> {
         BIN,
         env!("CARGO_PKG_VERSION"),
     ))?;
+    // The secret goes to the token endpoint the server names; it too must be
+    // Kaiser's, or for the sandbox this machine's.
+    kaiser::require_server(environment, &smart.authorization_endpoint)?;
+    kaiser::require_server(environment, &smart.token_endpoint)?;
     ctx.lock.before_signin()?;
     let app = SmartApp {
         app: BIN.into(),

@@ -417,6 +417,53 @@ fn a_production_member_never_comes_from_this_machine() {
 }
 
 #[test]
+fn a_stored_sign_in_pointing_elsewhere_is_refused_before_any_renewal() {
+    use pk_med_smart::SessionStore;
+    let dir = tempfile::tempdir().unwrap();
+    let mock = MockServer::start();
+    let ctx = ctx(dir.path(), &mock);
+    login(&ctx, "adult1");
+    let sessions = kp::session::Sessions(ctx.vault.clone());
+    let account = format!("smart/kaiser-health-plan-sandbox/{PATIENT_ID}");
+    let mut session = sessions.load(&account).unwrap().unwrap();
+    session.token_endpoint = "https://mock.example:8080/token".into();
+    session.tokens.expires_at = Some(1);
+    sessions.save(&session).unwrap();
+    let tokens_before = mock
+        .requests()
+        .iter()
+        .filter(|r| r.path() == "/token")
+        .count();
+    let err = commands::records::export(
+        &ctx,
+        &ExportArgs {
+            who: PatientArgs::default(),
+            since: None,
+            ndjson: false,
+            output: Some(dir.path().join("out")),
+        },
+    )
+    .unwrap_err();
+    assert_eq!(err.exit_code(), 2, "{err}");
+    let err = commands::api::run(
+        &ctx,
+        &kp::cli::ApiArgs {
+            method: "GET".into(),
+            path: "Coverage/cov-0001".into(),
+            who: PatientArgs::default(),
+        },
+    )
+    .unwrap_err();
+    assert_eq!(err.exit_code(), 2, "{err}");
+    let tokens_after = mock
+        .requests()
+        .iter()
+        .filter(|r| r.path() == "/token")
+        .count();
+    assert_eq!(tokens_after, tokens_before);
+}
+
+#[test]
 fn no_member_signs_in_at_a_server_that_is_neither_kaiser_nor_this_machine() {
     let dir = tempfile::tempdir().unwrap();
     let mock = MockServer::start();
@@ -474,6 +521,8 @@ fn one_unreadable_sign_in_does_not_hide_the_others() {
     assert_eq!(items[0]["usable"], true);
     assert_eq!(items[1]["usable"], false);
     assert!(items[1]["error"].is_string());
+    assert!(items[1]["refused"].is_null());
+    assert_eq!(items[0]["refused"], false);
     let sandbox = commands::patients::list(&ctx, false, Some("sandbox")).unwrap();
     assert_eq!(sandbox["items"].as_array().unwrap().len(), 2);
     let production = commands::patients::list(&ctx, false, Some("kaiser-health-plan")).unwrap();

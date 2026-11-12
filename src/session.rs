@@ -235,6 +235,13 @@ impl<T: Transport + Clone + Send + Sync + 'static> Live<T> {
     ) -> Result<Self, CliError> {
         let account = context.account();
         let sessions = Sessions(vault);
+        // Where the stored sign-in points is checked before a renewal sends
+        // the client id and secret to its token endpoint.
+        if let Some(stored) = sessions.load(&account)? {
+            let environment = context.environment()?;
+            crate::kaiser::require_server(environment, &stored.fhir_base)?;
+            crate::kaiser::require_server(environment, &stored.token_endpoint)?;
+        }
         let oauth = OAuthClient::new(transport, crate::commands::BIN, env!("CARGO_PKG_VERSION"));
         let auth = client_auth(&client);
         let session =

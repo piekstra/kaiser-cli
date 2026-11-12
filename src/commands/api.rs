@@ -18,7 +18,6 @@ pub fn run(ctx: &Ctx, args: &ApiArgs) -> Result<(), CliError> {
     }
     let context = ctx.signed_in(&args.who)?;
     let live = ctx.live(&context)?;
-    crate::kaiser::require_server(context.environment()?, &live.fhir_base())?;
     let t = transport()?;
     let source = live.clone();
     let fhir = FhirClient::new(&t, &live.fhir_base(), BIN, env!("CARGO_PKG_VERSION"))?

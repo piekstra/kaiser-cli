@@ -31,8 +31,9 @@ pub fn run(ctx: &Ctx, cmd: &PatientsCmd) -> Result<(), CliError> {
 }
 
 /// `patient-list/v1` for the members `org` selects. With `status`, each row
-/// also says whether its sign-in is usable and whether Kaiser refused it; a
-/// sign-in that cannot be read is that row's `error`, not the command's.
+/// also has `usable` and `refused` (whether Kaiser refused the sign-in). A
+/// sign-in that cannot be read is that row's `error`, not the command's,
+/// with `usable: false` and `refused: null`, since it is unknown.
 pub fn list(ctx: &Ctx, status: bool, org: Option<&str>) -> Result<Value, CliError> {
     let org = org.map(kaiser::resolve_org).transpose()?;
     let contexts: Vec<_> = ctx
@@ -66,6 +67,7 @@ pub fn list(ctx: &Ctx, status: bool, org: Option<&str>) -> Result<Value, CliErro
                 }
                 Err(e) => {
                     row["usable"] = false.into();
+                    row["refused"] = Value::Null;
                     row["error"] = e.message().into();
                 }
             }

@@ -43,7 +43,7 @@ fn validate(args: &ExportArgs, json: bool) -> Result<(), CliError> {
 
 /// Whether a context's records are synthetic: Kaiser's sandbox, or a server
 /// on this machine, which only the sandbox's organization may name
-/// ([`kaiser::require_server`]). Only those go to a plain file.
+/// ([`kaiser::require_server`], checked at sign-in and again by `Live::start`). Only those go to a plain file.
 fn synthetic(context: &Context) -> bool {
     context.organization == Environment::Sandbox.org_id()
 }
@@ -69,7 +69,6 @@ pub fn export(ctx: &Ctx, args: &ExportArgs) -> Result<Option<CliError>, CliError
     }
     let live = ctx.live(&context)?;
     let fhir_base = live.fhir_base();
-    kaiser::require_server(environment, &fhir_base)?;
     let t = transport()?;
     let source = live.clone();
     let mut fhir = FhirClient::new(&t, &fhir_base, BIN, env!("CARGO_PKG_VERSION"))?
