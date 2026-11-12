@@ -20,15 +20,20 @@ on the app's approval at developer.kp.org.
 
 ## Install
 
+Pick the target (`aarch64-apple-darwin` for Apple Silicon,
+`x86_64-apple-darwin` for an Intel Mac, `x86_64-unknown-linux-gnu`), check
+the archive against its `.sha256`, then put `kp` on your PATH:
+
 ```sh
-curl -sSL https://github.com/piekstra/kaiser-cli/releases/latest/download/kp-aarch64-apple-darwin.tar.gz | tar xz
-mv kp ~/.local/bin/        # or anywhere on PATH
-kp self-update             # later releases
+t=aarch64-apple-darwin
+u=https://github.com/piekstra/kaiser-cli/releases/latest/download/kp-$t.tar.gz
+curl -sSLO "$u" && curl -sSLO "$u.sha256"
+shasum -a 256 -c "kp-$t.tar.gz.sha256"    # on Linux: sha256sum -c
+tar xzf "kp-$t.tar.gz" && mkdir -p ~/.local/bin && mv kp ~/.local/bin/
+kp self-update                            # later releases
 ```
 
-Release assets: `kp-<target>.tar.gz` and `.sha256` for
-`aarch64-apple-darwin`, `x86_64-apple-darwin` and
-`x86_64-unknown-linux-gnu`. From source: `make install`.
+From source: `make install`.
 
 ## Setup
 
