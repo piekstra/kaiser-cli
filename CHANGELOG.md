@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.0 — 2026-11-12
 
 - `orgs list` and `orgs search`: Kaiser Permanente's health plan and its
   sandbox (`kaiser-health-plan`, `kaiser-health-plan-sandbox`) as
